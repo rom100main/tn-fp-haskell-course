@@ -11,10 +11,6 @@ import GHC.Generics
 import Generic.Random
 import Test.QuickCheck
 
-main :: IO ()
-main = do
-  putStrLn "TP2 is running"
-
 -- If you don't like this TP, you can do TP3 instead.
 
 -- Implement a card game a la Magic the Gathering. Each player
@@ -67,3 +63,34 @@ main = do
 -- https://hackage.haskell.org/package/random-1.2.1/docs/System-Random.html#t:StdGen
 --
 -- Use https://hoogle.haskell.org/ to find the functions you need
+
+data Card = MkCard
+  { hitpoints :: Int,
+    attack :: Int
+  }
+  deriving (Show)
+
+data Board = MkBoard
+  { card1 :: Maybe Card,
+    card2 :: Maybe Card,
+    card3 :: Maybe Card
+  }
+  deriving (Show)
+
+data Player = MkPlayer
+  { hitpoints :: Int,
+    hand :: [Card],
+    board :: Board,
+    deck :: [Card]
+  }
+  deriving (Show)
+
+data Game = MkGame
+  { player1 :: Player,
+    player2 :: Player
+  }
+  deriving (Show)
+
+main :: IO ()
+main = do
+  putStrLn "TP2 is running"
