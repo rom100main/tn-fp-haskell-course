@@ -64,33 +64,122 @@ import Test.QuickCheck
 --
 -- Use https://hoogle.haskell.org/ to find the functions you need
 
+data Error
+  = InvalidCardIndex
+  | BoardPositionOccupied
+  | HandEmpty
+  | DeckEmpty
+  deriving (Bounded, Enum, Eq, Show)
+
 data Card = MkCard
   { hitpoints :: Int,
     attack :: Int
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 data Board = MkBoard
   { card1 :: Maybe Card,
     card2 :: Maybe Card,
     card3 :: Maybe Card
   }
-  deriving (Show)
+  deriving (Eq, Show)
+
+data BoardPosition = Pos1 | Pos2 | Pos3
+  deriving (Bounded, Enum, Eq, Show)
 
 data Player = MkPlayer
-  { hitpoints :: Int,
+  { health :: Int,
     hand :: [Card],
     board :: Board,
     deck :: [Card]
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 data Game = MkGame
   { player1 :: Player,
     player2 :: Player
   }
-  deriving (Show)
+  deriving (Eq, Show)
+
+soldierCard :: Card
+soldierCard = MkCard {hitpoints = 1, attack = 1}
+
+knightCard :: Card
+knightCard = MkCard {hitpoints = 2, attack = 2}
+
+attackCard :: Card -> Card -> (Maybe Card, Maybe Card, Int)
+attackCard attacker defender =
+  let newDefenderHp = defender.hitpoints - attacker.attack
+      newAttackerHp = attacker.hitpoints - defender.attack
+      score = if newDefenderHp <= 0 then attack attacker else 0
+      newDefender = if newDefenderHp <= 0 then Nothing else Just (defender {hitpoints = newDefenderHp})
+      newAttacker = if newAttackerHp <= 0 then Nothing else Just (attacker {hitpoints = newAttackerHp})
+   in (newAttacker, newDefender, score)
+
+attackMaybeCard :: Maybe Card -> Maybe Card -> (Maybe Card, Maybe Card, Int)
+attackMaybeCard (Just atk) (Just def) = attackCard atk def
+attackMaybeCard (Just atk) Nothing = (Just atk, Nothing, atk.hitpoints)
+attackMaybeCard Nothing (Just def) = (Nothing, Just def, 0)
+attackMaybeCard Nothing Nothing = (Nothing, Nothing, 0)
+
+attackBoard :: Board -> Board -> (Board, Board, Int)
+attackBoard (MkBoard a1 a2 a3) (MkBoard d1 d2 d3) =
+  let (newA1, newD1, score1) = attackMaybeCard a1 d1
+      (newA2, newD2, score2) = attackMaybeCard a2 d2
+      (newA3, newD3, score3) = attackMaybeCard a3 d3
+      totalScore = score1 + score2 + score3
+   in (MkBoard newA1 newA2 newA3, MkBoard newD1 newD2 newD3, totalScore)
+
+attackPlayer :: Player -> Player -> (Player, Player)
+attackPlayer attacker defender =
+  let (newAttackerBoard, newDefenderBoard, score) = attackBoard attacker.board defender.board
+      newDefenderHp = defender.health - score
+   in (attacker {board = newAttackerBoard}, defender {board = newDefenderBoard, health = newDefenderHp})
+
+drawCard :: Player -> Either Error Player
+drawCard player = case player.deck of
+  [] -> Left DeckEmpty
+  (c : cs) -> Right (player {hand = c : player.hand, deck = cs})
+
+placeCard :: Board -> Card -> BoardPosition -> Either Error Board
+placeCard (MkBoard Nothing c2 c3) newCard Pos1 = Right (MkBoard (Just newCard) c2 c3)
+placeCard (MkBoard c1 Nothing c3) newCard Pos2 = Right (MkBoard c1 (Just newCard) c3)
+placeCard (MkBoard c1 c2 Nothing) newCard Pos3 = Right (MkBoard c1 c2 (Just newCard))
+placeCard _ _ _ = Left BoardPositionOccupied
+
+playCard :: Player -> Int -> BoardPosition -> Either Error Player
+playCard player cardIndex pos =
+  if null player.hand
+    then Left HandEmpty
+    else
+      if cardIndex < 0 || cardIndex >= length player.hand
+        then Left InvalidCardIndex
+        else case placeCard player.board (player.hand !! cardIndex) pos of
+          Left err -> Left err
+          Right newBoard ->
+            let newHand = take cardIndex player.hand ++ drop (cardIndex + 1) player.hand
+             in Right (player {board = newBoard, hand = newHand})
+
+createDeck :: [Card]
+createDeck = replicate 8 soldierCard ++ replicate 2 knightCard
+
+createPlayer :: Player
+createPlayer =
+  MkPlayer
+    { health = 20,
+      hand = [],
+      board = MkBoard Nothing Nothing Nothing,
+      deck = createDeck
+    }
+
+initialGame :: Game
+initialGame =
+  MkGame
+    { player1 = createPlayer,
+      player2 = createPlayer
+    }
 
 main :: IO ()
 main = do
-  putStrLn "TP2 is running"
+  let game = initialGame
+  print game
