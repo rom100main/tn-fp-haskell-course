@@ -182,4 +182,24 @@ initialGame =
 main :: IO ()
 main = do
   let game = initialGame
-  print game
+
+  let game' = case drawCard game.player1 of
+        Left err -> trace ("Error drawing card for player 1: " ++ show err) game
+        Right p1AfterDraw ->
+          case playCard p1AfterDraw 0 Pos1 of
+            Left err -> trace ("Error playing card for player 1: " ++ show err) game {player1 = p1AfterDraw}
+            Right p1AfterPlay ->
+              let (p1AfterAttack, p2AfterAttack) = attackPlayer p1AfterPlay game.player2
+               in game {player1 = p1AfterAttack, player2 = p2AfterAttack}
+  print game'
+
+  let game'' = case drawCard game'.player2 of
+        Left err -> trace ("Error drawing card for player 2: " ++ show err) game'
+        Right p2AfterDraw ->
+          case playCard p2AfterDraw 0 Pos1 of
+            Left err -> trace ("Error playing card for player 2: " ++ show err) game' {player2 = p2AfterDraw}
+            Right p2AfterPlay ->
+              let (p2AfterAttack, p1AfterAttack) = attackPlayer p2AfterPlay game'.player1
+               in game' {player1 = p1AfterAttack, player2 = p2AfterAttack}
+
+  print game''
