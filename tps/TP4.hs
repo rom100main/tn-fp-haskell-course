@@ -70,6 +70,17 @@ stringToExpr s = parseExpr (words s)
               Right (Op operator leftExpr rightExpr)
             _ -> Left "Invalid expression"
 
+-- Convert Expr to a Python expression string
+exprToString :: Expr -> String
+exprToString (Const n) = show n
+exprToString (Op op e1 e2) =
+  let opStr = case op of
+        Add -> "+"
+        Sub -> "-"
+        Mul -> "*"
+        Div -> "//"
+   in "(" ++ exprToString e1 ++ " " ++ opStr ++ " " ++ exprToString e2 ++ ")"
+
 -- | pyEval calls python3 and make it execute a python statement.
 -- For example, pyEval "2 * 3" returns "6"
 -- For 'readProcess' documentation, see:
@@ -83,13 +94,57 @@ pyEval :: String -> IO String
 pyEval expr = do
   readProcess "python3" ["-c", "print(" ++ expr ++ ", end='')"] ""
 
+-- Arbitrary instance for OpType
+instance Arbitrary OpType where
+  arbitrary = elements [Add, Sub, Mul]
+
+-- Arbitrary instance for Expr
+instance Arbitrary Expr where
+  arbitrary = sized exprGen
+    where
+      exprGen 0 = Const <$> arbitrary
+      exprGen n =
+        oneof
+          [ Const <$> arbitrary,
+            Op <$> arbitrary <*> exprGen (n `div` 2) <*> exprGen (n `div` 2)
+          ]
+
+-- Helper to check for division by zero in Expr
+hasDivByZero :: Expr -> Bool
+hasDivByZero (Const _) = False
+hasDivByZero (Op Div _ (Const 0)) = True
+hasDivByZero (Op _ e1 e2) =
+  hasDivByZero e1
+    || hasDivByZero e2
+
+-- QuickCheck property to compare eval with pyEval
+prop_evalMatchesPython :: Expr -> Property
+prop_evalMatchesPython expr =
+  not (hasDivByZero expr) ==>
+    ioProperty $ do
+      let exprStr = exprToString expr
+      pyResult <- pyEval exprStr
+      let evalResult = show (eval expr)
+      return (pyResult == evalResult)
+
+-- Run QuickCheck property
+qc :: IO ()
+qc = quickCheck prop_evalMatchesPython
+
 main :: IO ()
 main = do
-  pyResult <- pyEval "1 + 3"
-  putStrLn ("pyEval \"1 + 3\" returned: " ++ pyResult)
-  let expr = Op Add (Const 1) (Const 3)
-  let result = eval expr
-  putStrLn ("eval of " ++ show expr ++ " returned: " ++ show (result))
-  let exprStr = "1 + 5 * 3"
+  let exprDiv0 = Op Add (Const 6) (Op Sub (Op Mul (Op Sub (Const (-8)) (Const (-11))) (Op Mul (Const (-13)) (Const (-3)))) (Op Div (Const 4) (Op Div (Const 8) (Const 0))))
+  let exprIsDiv0 = hasDivByZero exprDiv0
+  putStrLn ("Expression \"" ++ show exprDiv0 ++ "\" has a division by zero : " ++ show exprIsDiv0)
+
+  let exprStr = "0"
+  pyResult <- pyEval exprStr
+  putStrLn ("pyEval \"" ++ exprStr ++ "\" returned: " ++ pyResult)
   let parsedExpr = stringToExpr exprStr
-  putStrLn ("stringToExpr \"" ++ exprStr ++ "\" returned: " ++ show parsedExpr)
+  let evalResult = case parsedExpr of
+        Right expr -> show (eval expr)
+        Left err -> "Error: " ++ err
+  putStrLn ("Evaluating parsed expression from \"" ++ exprStr ++ "\" returned: " ++ evalResult)
+
+  putStrLn "Running QuickCheck tests..."
+  qc
