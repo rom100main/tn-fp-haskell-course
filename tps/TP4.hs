@@ -113,7 +113,7 @@ instance Arbitrary Expr where
       exprGen n =
         oneof
           [ Const <$> arbitrary,
-            Op <$> arbitrary <*> exprGen (n `div` 2) <*> exprGen (n `div` 2)
+            Op <$> arbitrary <*> exprGen (n `div` 2 + n `mod` 2) <*> exprGen (n `div` 2)
           ]
 
 -- Helper to check for division by zero in Expr
