@@ -43,14 +43,22 @@ eval (Const n) = Right n
 eval (Op op e1 e2) = do
   v1 <- eval e1
   v2 <- eval e2
+  let i1 = toInteger v1
+      i2 = toInteger v2
+      minI = toInteger (minBound :: Int)
+      maxI = toInteger (maxBound :: Int)
+      checkOverflow r =
+        if r < minI || r > maxI
+          then Left "Overflow"
+          else Right (fromInteger r)
   case op of
-    Add -> Right (v1 + v2)
-    Sub -> Right (v1 - v2)
-    Mul -> Right (v1 * v2)
+    Add -> checkOverflow (i1 + i2)
+    Sub -> checkOverflow (i1 - i2)
+    Mul -> checkOverflow (i1 * i2)
     Div ->
       if v2 == 0
         then Left "Division by zero"
-        else Right (v1 `div` v2)
+        else checkOverflow (i1 `div` i2)
 
 -- | Parse a string into an Expr.
 stringToExpr :: String -> Either String Expr
@@ -122,10 +130,15 @@ hasDivByZero (Const _) = False
 hasDivByZero (Op op e1 e2) =
   eval (Op op e1 e2) == Left "Division by zero"
 
+hasOverflow :: Expr -> Bool
+hasOverflow (Const _) = False
+hasOverflow (Op op e1 e2) =
+  eval (Op op e1 e2) == Left "Overflow"
+
 -- QuickCheck property to compare eval with pyEval
 prop_evalMatchesPython :: Expr -> Property
 prop_evalMatchesPython expr =
-  not (hasDivByZero expr) ==>
+  not (hasDivByZero expr || hasOverflow expr) ==>
     ioProperty $ do
       let exprStr = exprToString expr
       pyResult <- pyEval exprStr
@@ -140,9 +153,13 @@ qc = quickCheck prop_evalMatchesPython
 
 main :: IO ()
 main = do
-  let exprDiv0 = Op Div (Const 1) (Const 0)
+  let exprDiv0 = Op Div (Const 10) (Const 0)
   let exprIsDiv0 = hasDivByZero exprDiv0
   putStrLn ("Expression \"" ++ show exprDiv0 ++ "\" has a division by zero : " ++ show exprIsDiv0)
+
+  let exprOverflow = Op Add (Const maxBound) (Const 1)
+  let exprIsOverflow = hasOverflow exprOverflow
+  putStrLn ("Expression \"" ++ show exprOverflow ++ "\" causes an overflow : " ++ show exprIsOverflow)
 
   let exprStr = "0"
   pyResult <- pyEval exprStr
