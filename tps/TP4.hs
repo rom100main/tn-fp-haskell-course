@@ -38,12 +38,19 @@ data Expr
   | Op OpType Expr Expr
   deriving (Eq, Show)
 
-eval :: Expr -> Int
-eval (Const n) = n
-eval (Op Add e1 e2) = eval e1 + eval e2
-eval (Op Sub e1 e2) = eval e1 - eval e2
-eval (Op Mul e1 e2) = eval e1 * eval e2
-eval (Op Div e1 e2) = eval e1 `div` eval e2
+eval :: Expr -> Either String Int
+eval (Const n) = Right n
+eval (Op op e1 e2) = do
+  v1 <- eval e1
+  v2 <- eval e2
+  case op of
+    Add -> Right (v1 + v2)
+    Sub -> Right (v1 - v2)
+    Mul -> Right (v1 * v2)
+    Div ->
+      if v2 == 0
+        then Left "Division by zero"
+        else Right (v1 `div` v2)
 
 -- | Parse a string into an Expr.
 stringToExpr :: String -> Either String Expr
@@ -96,7 +103,7 @@ pyEval expr = do
 
 -- Arbitrary instance for OpType
 instance Arbitrary OpType where
-  arbitrary = elements [Add, Sub, Mul]
+  arbitrary = elements [Add, Sub, Mul, Div]
 
 -- Arbitrary instance for Expr
 instance Arbitrary Expr where
@@ -112,10 +119,8 @@ instance Arbitrary Expr where
 -- Helper to check for division by zero in Expr
 hasDivByZero :: Expr -> Bool
 hasDivByZero (Const _) = False
-hasDivByZero (Op Div _ (Const 0)) = True
-hasDivByZero (Op _ e1 e2) =
-  hasDivByZero e1
-    || hasDivByZero e2
+hasDivByZero (Op op e1 e2) =
+  eval (Op op e1 e2) == Left "Division by zero"
 
 -- QuickCheck property to compare eval with pyEval
 prop_evalMatchesPython :: Expr -> Property
@@ -124,7 +129,9 @@ prop_evalMatchesPython expr =
     ioProperty $ do
       let exprStr = exprToString expr
       pyResult <- pyEval exprStr
-      let evalResult = show (eval expr)
+      let evalResult = case eval expr of
+            Right val -> show val
+            Left err -> "Error: " ++ err
       return (pyResult == evalResult)
 
 -- Run QuickCheck property
@@ -133,7 +140,7 @@ qc = quickCheck prop_evalMatchesPython
 
 main :: IO ()
 main = do
-  let exprDiv0 = Op Add (Const 6) (Op Sub (Op Mul (Op Sub (Const (-8)) (Const (-11))) (Op Mul (Const (-13)) (Const (-3)))) (Op Div (Const 4) (Op Div (Const 8) (Const 0))))
+  let exprDiv0 = Op Div (Const 1) (Const 0)
   let exprIsDiv0 = hasDivByZero exprDiv0
   putStrLn ("Expression \"" ++ show exprDiv0 ++ "\" has a division by zero : " ++ show exprIsDiv0)
 
@@ -142,7 +149,9 @@ main = do
   putStrLn ("pyEval \"" ++ exprStr ++ "\" returned: " ++ pyResult)
   let parsedExpr = stringToExpr exprStr
   let evalResult = case parsedExpr of
-        Right expr -> show (eval expr)
+        Right expr -> case eval expr of
+          Right val -> show val
+          Left err -> "Error: " ++ err
         Left err -> "Error: " ++ err
   putStrLn ("Evaluating parsed expression from \"" ++ exprStr ++ "\" returned: " ++ evalResult)
 
