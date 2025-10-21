@@ -43,28 +43,30 @@
 
 module Main where
 
-import           Control.Monad.IO.Class
-import           Data.Aeson
-import qualified Data.ByteString        as BS
-import           Data.Maybe             (fromMaybe)
-import qualified Data.Text              as T
-import qualified Data.Text.Encoding     as T
-import qualified Data.Text.Lazy         as TL
-import           GHC.Base               (build)
-import           GHC.Generics
-import           Network.HTTP.Req
-import qualified Network.HTTP.Req       as Req
-import           System.Environment
-import           System.Exit
-import           Web.Scotty
+import Control.Monad.IO.Class
+import Data.Aeson
+import qualified Data.ByteString as BS
+import Data.Maybe (fromMaybe)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.Text.Lazy as TL
+import GHC.Base (build)
+import GHC.Generics
+import Network.HTTP.Req
+import qualified Network.HTTP.Req as Req
+import System.Environment
+import System.Exit
+import Web.Scotty
 
 -- | Subset of the data returned by the endpoint api.github.com/users/USER/repos
 -- See https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user
-data Repo = Repo {
-    name :: String
-  } deriving (Show, Generic)
+data Repo = Repo
+  { name :: String
+  }
+  deriving (Show, Generic)
 
 instance ToJSON Repo -- Automatically generate a json->Repo parser
+
 instance FromJSON Repo -- Automatically generate a Repo->json serializer
 
 -- TODO smelc, ask to use the JSON functions in the repl
@@ -75,7 +77,7 @@ yourGitHubHandle = "smelc" -- Put your GitHub handle here, for example mine is "
 -- | The 'req' 'Option' for authenticating to GitHub
 optionsFor :: BS.ByteString -> BS.ByteString -> (Option 'Https)
 optionsFor pat user =
-  (Req.header "User-Agent" user ) <> (basicAuth user pat)
+  (Req.header "User-Agent" user) <> (basicAuth user pat)
 
 -- | Prints to standard output the GitHub repositories of 'user'.
 -- 'pat' stands for 'Personal access token'. It is used to authenticate to GitHub.
@@ -112,13 +114,14 @@ main = do
   where
     port :: Int = 3000
 
-data User = User { name :: String, avatar :: FilePath, id :: Int }
+data User = User {name :: String, avatar :: FilePath, id :: Int}
 
 -- | @authenticate user password@ tries to authenticate @user@ with @password@
 authenticate :: User -> String -> UserWithAuthStatus Authenticated
 authenticate = undefined
 
 data Guest
+
 data Authenticated
 
 type UserWithAuthStatus a = User
