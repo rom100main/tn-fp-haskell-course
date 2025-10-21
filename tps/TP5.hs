@@ -56,6 +56,7 @@ import Network.HTTP.Req
 import qualified Network.HTTP.Req as Req
 import System.Environment
 import System.Exit
+import System.IO.Unsafe (unsafePerformIO)
 import Web.Scotty
 
 -- | Subset of the data returned by the endpoint api.github.com/users/USER/repos
@@ -70,6 +71,65 @@ data Repo = Repo
 instance ToJSON Repo -- Automatically generate a json->Repo parser
 
 instance FromJSON Repo -- Automatically generate a Repo->json serializer
+
+-- | Subset of the data returned by the endpoint api.github.com/repos/OWNER/REPO/commits
+-- See https://docs.github.com/en/rest/commits/commits#list-commits
+data RawCommit = RawCommit
+  { shaRawCommit :: String,
+    commitRawCommit :: Commit
+  }
+  deriving (Show)
+
+data Commit = Commit
+  { authorCommit :: AuthorCommit,
+    messageCommit :: String
+  }
+  deriving (Show)
+
+data AuthorCommit = AuthorCommit
+  { nameAuthorCommit :: String,
+    dateAuthorCommit :: String
+  }
+  deriving (Show)
+
+instance ToJSON RawCommit where
+  toJSON (RawCommit shaRawCommit commitRawCommit) =
+    object
+      [ "sha" .= shaRawCommit,
+        "commit" .= commitRawCommit
+      ]
+
+instance FromJSON RawCommit where
+  parseJSON = withObject "RawCommit" $ \v ->
+    RawCommit
+      <$> v .: "sha"
+      <*> v .: "commit"
+
+instance ToJSON Commit where
+  toJSON (Commit authorCommit messageCommit) =
+    object
+      [ "author" .= authorCommit,
+        "message" .= messageCommit
+      ]
+
+instance FromJSON Commit where
+  parseJSON = withObject "Commit" $ \v ->
+    Commit
+      <$> v .: "author"
+      <*> v .: "message"
+
+instance ToJSON AuthorCommit where
+  toJSON (AuthorCommit nameAuthorCommit dateAuthorCommit) =
+    object
+      [ "name" .= nameAuthorCommit,
+        "date" .= dateAuthorCommit
+      ]
+
+instance FromJSON AuthorCommit where
+  parseJSON = withObject "AuthorCommit" $ \v ->
+    AuthorCommit
+      <$> v .: "name"
+      <*> v .: "date"
 
 -- TODO smelc, ask to use the JSON functions in the repl
 
@@ -95,6 +155,14 @@ getUserRepositories :: BS.ByteString -> BS.ByteString -> IO [Repo]
 getUserRepositories pat user = runReq defaultHttpConfig $ do
   let opts = optionsFor pat user
   response <- req GET (https "api.github.com" /: "users" /: T.decodeUtf8 user /: "repos") NoReqBody jsonResponse opts
+  return (responseBody response)
+
+-- | Returns the commits of a repository.
+-- 'pat' stands for 'Personal access token'. It is used to authenticate to GitHub.
+getRepositoryCommits :: BS.ByteString -> BS.ByteString -> String -> IO [RawCommit]
+getRepositoryCommits pat user repo = runReq defaultHttpConfig $ do
+  let opts = optionsFor pat user
+  response <- req GET (https "api.github.com" /: "repos" /: T.decodeUtf8 user /: T.pack repo /: "commits") NoReqBody jsonResponse opts
   return (responseBody response)
 
 main :: IO ()
@@ -126,21 +194,54 @@ main = do
                   TL.pack
                     ( "<ul>"
                         ++ concatMap
-                          ( \(Repo {name = repoName, private, description}) ->
+                          ( \(Repo {name = repoName, private = repoPrivate, description = repoDescription}) ->
                               "<li>"
                                 ++ "<b>"
                                 ++ repoName
                                 ++ "</b>"
                                 ++ " <i>"
-                                ++ if private
+                                ++ if repoPrivate
                                   then "Private"
                                   else
                                     "Public"
                                       ++ "</i>"
                                       ++ "<p>"
-                                      ++ fromMaybe "" description
+                                      ++ fromMaybe "" repoDescription
                                       ++ "</p>"
                                       ++ "</li>"
+                                      ++ "<details><summary>Commits</summary>"
+                                      ++ ( "<ul>"
+                                             ++ concatMap
+                                               ( \( RawCommit
+                                                      { shaRawCommit = commitSha,
+                                                        commitRawCommit =
+                                                          Commit
+                                                            { authorCommit =
+                                                                AuthorCommit
+                                                                  { nameAuthorCommit = nameAuthorCommit
+                                                                  },
+                                                              messageCommit = commitMessage
+                                                            }
+                                                      }
+                                                    ) ->
+                                                     "<li>"
+                                                       ++ commitSha
+                                                       ++ " from "
+                                                       ++ nameAuthorCommit
+                                                       ++ " : "
+                                                       ++ commitMessage
+                                                       ++ "</li>"
+                                               )
+                                               ( unsafePerformIO
+                                                   ( getRepositoryCommits
+                                                       accessToken'
+                                                       yourGitHubHandle
+                                                       repoName
+                                                   )
+                                               )
+                                             ++ "</ul>"
+                                         )
+                                      ++ "</details>"
                           )
                           repos
                         ++ "</ul>"
