@@ -61,7 +61,9 @@ import Web.Scotty
 -- | Subset of the data returned by the endpoint api.github.com/users/USER/repos
 -- See https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user
 data Repo = Repo
-  { name :: String
+  { name :: String,
+    description :: Maybe String,
+    private :: Bool
   }
   deriving (Show, Generic)
 
@@ -110,7 +112,43 @@ main = do
       putStrLn $ show repos
       scotty port $
         get "/" $
-          html "<h1>Hello</h1>"
+          html
+            ( mconcat
+                [ "<!DOCTYPE html>",
+                  "<html>",
+                  "<head><meta charset=\"utf-8\"><title>@",
+                  TL.fromStrict (T.decodeUtf8 yourGitHubHandle),
+                  "'s GitHub repos</title></head>",
+                  "<body>",
+                  "<h1>@",
+                  TL.fromStrict (T.decodeUtf8 yourGitHubHandle),
+                  "'s GitHub repos</h1>",
+                  TL.pack
+                    ( "<ul>"
+                        ++ concatMap
+                          ( \(Repo {name = repoName, private, description}) ->
+                              "<li>"
+                                ++ "<b>"
+                                ++ repoName
+                                ++ "</b>"
+                                ++ " <i>"
+                                ++ if private
+                                  then "Private"
+                                  else
+                                    "Public"
+                                      ++ "</i>"
+                                      ++ "<p>"
+                                      ++ fromMaybe "" description
+                                      ++ "</p>"
+                                      ++ "</li>"
+                          )
+                          repos
+                        ++ "</ul>"
+                    ),
+                  "</body>",
+                  "</html>"
+                ]
+            )
   where
     port :: Int = 3000
 
